@@ -9,8 +9,6 @@ type Player struct {
 type SimulationResult struct {
 	A             Player        `json:"A"`
 	B             Player        `json:"B"`
-	ProbabilityA  float64       `json:"ProbabilityA"`
-	ProbabilityB  float64       `json:"ProbabilityB"`
 	Moneyline     Probability   `json:"Moneyline"`
 	SetHandicaps  []Probability `json:"SetHandicaps"`
 	GameHandicaps []Probability `json:"GameHandicaps"`
