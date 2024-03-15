@@ -1,6 +1,8 @@
 package goTennis
 
 import (
+	"fmt"
+	"log"
 	"math/rand"
 
 	"github.com/ttopias/goTennis/model"
@@ -9,13 +11,15 @@ import (
 // SimulateMatch simulates a tennis match between two players n times and returns the simulation results.
 //
 // Parameters:
-//		a: model.Player - the first player
-//		b: model.Player - the second player
-//		n: int - the number of simulations
-//		bo: int - the number of sets in the match (3 for best of 3, 5 for best of 5)
+//
+//	a: model.Player - the first player
+//	b: model.Player - the second player
+//	n: int - the number of simulations
+//	bo: int - the number of sets in the match (3 for best of 3, 5 for best of 5)
 //
 // Returns:
-//		model.SimulationResult - the simulation results
+//
+//	model.SimulationResult - the simulation results
 func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 	if bo != 3 && bo != 5 {
 		log.Println("Invalid number of sets")
@@ -35,7 +39,7 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 		if i%2 == 0 {
 			matchResult = SimulateSingleMatch(a, b, bo)
 
-			if matchResult.PlayerASetsWon > matchResult.PlayerBSetsWon {
+			if matchResult.ASets > matchResult.BSets {
 				aWins++
 			} else {
 				bWins++
@@ -43,21 +47,21 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 			matchGames := func(set []model.SimulatedSet) model.Result {
 				var res model.Result
 				for _, v := range set {
-					res.ResultA += v.PlayerAGamesWon
-					res.ResultB += v.PlayerBGamesWon
+					res.A += v.AGames
+					res.B += v.BGames
 				}
 				return res
 			}(matchResult.SetResults)
 
 			allGames = append(allGames, matchGames)
 			endResult := model.Result{
-				ResultA: matchResult.PlayerASetsWon,
-				ResultB: matchResult.PlayerBSetsWon,
+				A: matchResult.ASets,
+				B: matchResult.BSets,
 			}
 			allSets = append(allSets, endResult)
 		} else {
-			matchResult = SimulateSingleMatch(playerB, playerA, bo)
-			if matchResult.PlayerASetsWon > matchResult.PlayerBSetsWon {
+			matchResult = SimulateSingleMatch(a, b, bo)
+			if matchResult.ASets > matchResult.BSets {
 				bWins++
 			} else {
 				aWins++
@@ -65,15 +69,15 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 			matchGames := func(set []model.SimulatedSet) model.Result {
 				var res model.Result
 				for _, v := range set {
-					res.ResultA += v.PlayerBGamesWon
-					res.ResultB += v.PlayerAGamesWon
+					res.A += v.BGames
+					res.B += v.AGames
 				}
 				return res
 			}(matchResult.SetResults)
 			allGames = append(allGames, matchGames)
 			endResult := model.Result{
-				ResultA: matchResult.PlayerBSetsWon,
-				ResultB: matchResult.PlayerASetsWon,
+				A: matchResult.ASets,
+				B: matchResult.BSets,
 			}
 			allSets = append(allSets, endResult)
 		}
@@ -82,26 +86,26 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 	// Calculate average probabilities
 	averageProbabilityA := float64(aWins) / float64(n)
 	averageProbabilityB := float64(bWins) / float64(n)
-	gamesResults = CalculateGamePercentages(allGames)
-	setsResults = CalculateGamePercentages(allSets)
+	gamesResults = MatchPercentages(allGames)
+	setsResults = MatchPercentages(allSets)
 	if bo == 3 {
-		setHandies = GenerateHandicapsInRange(setsResults, -2, 1)
-		gameHandies = GenerateHandicapsInRange(gamesResults, -10, 10)
-		setOUs = GenerateOverUnderProbabilities(setsResults, 2, 2)
-		gameOUs = GenerateOverUnderProbabilities(gamesResults, 12, 40)
+		setHandies = HandicapsRange(setsResults, -2, 1)
+		gameHandies = HandicapsRange(gamesResults, -10, 10)
+		setOUs = TotalProbabilitiesRange(setsResults, 2, 2)
+		gameOUs = TotalProbabilitiesRange(gamesResults, 12, 40)
 	} else {
-		setHandies = GenerateHandicapsInRange(setsResults, -3, 2)
-		gameHandies = GenerateHandicapsInRange(gamesResults, -30, 30)
-		setOUs = GenerateOverUnderProbabilities(setsResults, 3, 4)
-		gameOUs = GenerateOverUnderProbabilities(gamesResults, 20, 75)
+		setHandies = HandicapsRange(setsResults, -3, 2)
+		gameHandies = HandicapsRange(gamesResults, -30, 30)
+		setOUs = TotalProbabilitiesRange(setsResults, 3, 4)
+		gameOUs = TotalProbabilitiesRange(gamesResults, 20, 75)
 	}
 	return model.SimulationResult{
-		PlayerA:       playerA,
-		PlayerB:       playerB,
-		Moneyline:     model.Probability{
-			Text: "Moneyline", 
-			ProbA: averageProbabilityA, 
-			ProbB: averageProbabilityB
+		A: a,
+		B: b,
+		Moneyline: model.Probability{
+			Name:  "Moneyline",
+			ProbA: averageProbabilityA,
+			ProbB: averageProbabilityB,
 		},
 		SetHandicaps:  setHandies,
 		GameHandicaps: gameHandies,
@@ -117,28 +121,30 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 // SimulateSingleMatch simulates a single tennis match between two players.
 //
 // Parameters:
-//		a: model.Player - the first player
-//		b: model.Player - the second player
-//		n: int - the number of sets in the match (1 for best of 1, 3 for best of 3, 5 for best of 5)
+//
+//	a: model.Player - the first player
+//	b: model.Player - the second player
+//	n: int - the number of sets in the match (1 for best of 1, 3 for best of 3, 5 for best of 5)
 //
 // Returns:
-//		model.SimulatedMatch - the simulation results
+//
+//	model.SimulatedMatch - the simulation results
 func SimulateSingleMatch(a, b model.Player, n int) model.SimulatedMatch {
 	var matchResult model.SimulatedMatch
 	var aServing bool
 	var lastWinner int
 
 	// Simulate sets until one player wins enough sets to win the match
-	for matchResult.PlayerASetsWon < (n+1)/2 && matchResult.PlayerBSetsWon < (n+1)/2 {
+	for matchResult.ASets < (n+1)/2 && matchResult.BSets < (n+1)/2 {
 		// Simulate a set
 		setResult := SimulateSet(a, b, aServing, lastWinner)
 
 		// Update match scores based on the set winner
-		if setResult.PlayerAGamesWon > setResult.PlayerBGamesWon {
-			matchResult.PlayerASetsWon++
+		if setResult.AGames > setResult.BGames {
+			matchResult.ASets++
 			lastWinner = 3
 		} else {
-			matchResult.PlayerBSetsWon++
+			matchResult.BSets++
 			lastWinner = 4
 		}
 		matchResult.SetResults = append(matchResult.SetResults, setResult)
@@ -150,45 +156,47 @@ func SimulateSingleMatch(a, b model.Player, n int) model.SimulatedMatch {
 // SimulateTiebreak simulates a tennis tiebreak game between two players.
 //
 // Parameters:
-//		a: model.Player - the first player
-//		b: model.Player - the second player
-//		aServing: bool - the player who starts serving
+//
+//	a: model.Player - the first player
+//	b: model.Player - the second player
+//	aServing: bool - the player who starts serving
 //
 // Returns:
-//		bool - true if player A wins the tiebreak, false otherwise
+//
+//	bool - true if player A wins the tiebreak, false otherwise
 func SimulateTiebreak(a, b model.Player, aServing bool) bool {
 	// Counters for the players' scores
-	var tbRes SimResult
+	var tbRes model.SimResult
 	var gameWinnerA bool
 
 	// initialize values for tiebreak result
-	tbRes.scoreA = 0
-	tbRes.scoreB = 0
-	tbRes.servingA = aServing
+	tbRes.A = 0
+	tbRes.B = 0
+	tbRes.ServingA = aServing
 
 	// Simulate points until the tiebreak is won
 	for {
 		// Simulate a point
-		if tbRes.servingA {
-			gameWinnerA = SimulatePoint(a.ServicePointsRatio, b.ReturnPointsRatio)
+		if tbRes.ServingA {
+			gameWinnerA = SimulatePoint(a.Serve, b.Return)
 		} else {
-			gameWinnerA = SimulatePoint(b.ServicePointsRatio, a.ReturnPointsRatio)
+			gameWinnerA = SimulatePoint(b.Serve, a.Return)
 		}
 
 		// Update scores based on the point winner
 		if gameWinnerA {
-			tbRes.scoreA++
+			tbRes.A++
 		} else {
-			tbRes.scoreB++
+			tbRes.B++
 		}
 
 		// Check if the tiebreak is won
-		if (tbRes.scoreA >= 7 || tbRes.scoreB >= 7) && (tbRes.scoreA-tbRes.scoreB >= 2 || tbRes.scoreB-tbRes.scoreA >= 2) {
-			return tbRes.scoreA > tbRes.scoreB // Player A wins the tiebreak if scoreA is greater
+		if (tbRes.A >= 7 || tbRes.B >= 7) && (tbRes.A-tbRes.B >= 2 || tbRes.B-tbRes.A >= 2) {
+			return tbRes.A > tbRes.B // Player A wins the tiebreak if A is greater
 		}
 		// Switch serving player after every two points, starting after the first point of the tiebreak game
-		if (tbRes.scoreA+tbRes.scoreB-1)%2 == 0 {
-			tbRes.servingA = !tbRes.servingA
+		if (tbRes.A+tbRes.B-1)%2 == 0 {
+			tbRes.ServingA = !tbRes.ServingA
 		}
 	}
 }
@@ -196,13 +204,15 @@ func SimulateTiebreak(a, b model.Player, aServing bool) bool {
 // SimulateSet simulates a tennis set between two players.
 //
 // Parameters:
-//		a: model.Player - the first player
-//		b: model.Player - the second player
-//		aStarts: bool - If true, player A starts serving. If false, player B starts serving.
-//		advantage: int - the advantage to be used
+//
+//	a: model.Player - the first player
+//	b: model.Player - the second player
+//	aStarts: bool - If true, player A starts serving. If false, player B starts serving.
+//	advantage: int - the advantage to be used
 //
 // Returns:
-//		model.SimulatedSet - the simulation results
+//
+//	model.SimulatedSet - the simulation results
 func SimulateSet(a, b model.Player, aStarts bool, advantage int) model.SimulatedSet {
 	// Counters for the players' games
 	var res model.SimulatedSet
@@ -211,49 +221,47 @@ func SimulateSet(a, b model.Player, aStarts bool, advantage int) model.Simulated
 	inAdvantage := advantage
 
 	// Initialize values for res
-	res.PlayerAGamesWon = 0
-	res.PlayerBGamesWon = 0
+	res.AGames = 0
+	res.BGames = 0
 	playerAServing = aStarts
-	baseFactorA := 1 * (1 + (a.ELO/(a.ELO+b.ELO))*(1+(a.SetsRatio/(a.SetsRatio+b.SetsRatio))))
-	baseFactorB := 1 * (1 + (b.ELO/(a.ELO+b.ELO))*(1+(b.SetsRatio/(a.SetsRatio+b.SetsRatio))))
 
 	for {
 		// Simulate a game
 		if playerAServing {
-			serverWins = BreakAdvantage(inAdvantage, a.ServicePointsRatio*baseFactorA, b.ReturnPointsRatio*baseFactorB)
+			serverWins = BreakAdvantage(inAdvantage, a.Serve, b.Return)
 		} else {
-			serverWins = BreakAdvantage(inAdvantage, b.ServicePointsRatio*baseFactorB, a.ReturnPointsRatio*baseFactorA)
+			serverWins = BreakAdvantage(inAdvantage, b.Serve, a.Return)
 		}
 
 		// Update scores based on the game winner
 		if playerAServing {
 			if serverWins {
-				res.PlayerAGamesWon++
+				res.AGames++
 				inAdvantage = 0
 			} else {
-				res.PlayerBGamesWon++
+				res.BGames++
 				inAdvantage = 2
 			}
 		} else {
 			if serverWins {
-				res.PlayerBGamesWon++
+				res.BGames++
 				inAdvantage = 0
 			} else {
-				res.PlayerAGamesWon++
+				res.AGames++
 				inAdvantage = 1
 			}
 		}
-		
+
 		// Check if the set is won
-		if (res.PlayerAGamesWon >= 6 || res.PlayerBGamesWon >= 6) && (res.PlayerAGamesWon-res.PlayerBGamesWon >= 2 || res.PlayerBGamesWon-res.PlayerAGamesWon >= 2) {
+		if (res.AGames >= 6 || res.BGames >= 6) && (res.AGames-res.BGames >= 2 || res.BGames-res.AGames >= 2) {
 			return res // Winner has been decided
-		} else if res.PlayerAGamesWon == 6 && res.PlayerBGamesWon == 6 {
+		} else if res.AGames == 6 && res.BGames == 6 {
 			// If the set reaches 6-6, simulate a tiebreak
 			tiebreakWinnerA := SimulateTiebreak(a, b, playerAServing)
 			if tiebreakWinnerA {
-				res.PlayerAGamesWon++
+				res.AGames++
 			} else {
-				res.PlayerBGamesWon++
+				res.BGames++
 			}
 			return res
 		}
@@ -264,12 +272,14 @@ func SimulateSet(a, b model.Player, aStarts bool, advantage int) model.Simulated
 // BreakAdvantage simulates a tennis game with a specific advantage for the server or the returner, depending on the past events in the set.
 //
 // Parameters:
-//		adv: int - the advantage to be used
-//		s: float64 - the server's probability of winning a single point when serving
-//		r: float64 - the returner's probability of winning a single point when returning
+//
+//	adv: int - the advantage to be used
+//	s: float64 - the server's probability of winning a single point when serving
+//	r: float64 - the returner's probability of winning a single point when returning
 //
 // Returns:
-//		bool - true if the server wins the game, false otherwise
+//
+//	bool - true if the server wins the game, false otherwise
 func BreakAdvantage(adv int, s, r float64) bool {
 	if adv == 0 {
 		return SimulateGame(s, r)
@@ -295,11 +305,13 @@ func BreakAdvantage(adv int, s, r float64) bool {
 // SimulateGame simulates a tennis game between two players.
 //
 // Parameters:
-//		s: float64 - the servers probability of winning a single point
-//		r: float64 - the returners probability of winning a single point
+//
+//	s: float64 - the servers probability of winning a single point
+//	r: float64 - the returners probability of winning a single point
 //
 // Returns:
-//		bool - true if player A wins the game, false otherwise
+//
+//	bool - true if player A wins the game, false otherwise
 func SimulateGame(s, r float64) bool {
 	// Counters for the players' scores
 	server := 0
@@ -329,17 +341,184 @@ func SimulateGame(s, r float64) bool {
 // SimulatePoint simulates a single point between two players based on their win probabilities in a single point.
 //
 // Parameters:
-//		s: float64 - the servers probability of winning a single point
-//		r: float64 - the returners probability of winning a single point
+//
+//	s: float64 - the servers probability of winning a single point
+//	r: float64 - the returners probability of winning a single point
 //
 // Returns:
-//		bool - true if player A wins the point, false otherwise
+//
+//	bool - true if player A wins the point, false otherwise
 func SimulatePoint(s, r float64) bool {
 	// Scale probabilities to ensure their sum is within the valid range (0 to 1).
-	s = ScaleProbability(s, r)
+	s, _ = ScaleIntoProbabilities(s, r)
 
 	// Generate a random number between 0 and 1 to determine the outcome of the point.
 	randomNumber := rand.Float64()
 
 	return randomNumber < s
+}
+
+// ScaleIntoProbabilities ensures the inputs is within the valid range (0 to 1) to be used as a probabilities
+//
+// Parameters:
+//
+//	a: float64 - the first value to be scaled
+//	b: float64 - the second value to be scaled
+//
+// Returns:
+//
+//	float64 - the scaled value
+func ScaleIntoProbabilities(a float64, b float64) (float64, float64) {
+	var outA, outB float64
+	outA = a / (a + b)
+	outB = b / (a + b)
+
+	return outA, outB
+}
+
+// MatchPercentages calculates the probabilities for the moneyline based on the given results.
+//
+// Parameters:
+//
+//	simulatedSets: []model.Result - the results of the simulated sets
+//
+// Returns:
+//
+//	[]model.Result - the probabilities for the match
+func MatchPercentages(simulatedSets []model.Result) []model.Result {
+	resultCounts := make(map[model.Result]int)
+	var resultPercentage []model.Result
+
+	// Count occurrences of each result
+	for _, set := range simulatedSets {
+		result := model.Result{
+			A: set.A,
+			B: set.B,
+		}
+		resultCounts[result]++
+	}
+
+	// Calculate percentage for each result
+	var totalSets = len(simulatedSets)
+	for result, count := range resultCounts {
+		percentage := float64(count) / float64(totalSets)
+		result.Probability = percentage
+		resultPercentage = append(resultPercentage, result)
+	}
+
+	return resultPercentage
+}
+
+// HandicapProbabilities calculates the handicap probabilities for the match based on the given results.
+//
+// Parameters:
+//
+//	results: []model.Result - the results of the simulated sets
+//	handicap: float64 - the handicap to be calculated
+//
+// Returns:
+//
+//	model.Probability - the probabilities for the handicap
+func HandicapProbabilities(results []model.Result, handicap float64) model.Probability {
+	var probA, probB, diff float64
+	handicapText := fmt.Sprintf("%.1f", handicap)
+
+	for _, result := range results {
+		// Check if the result satisfies the handicap condition
+		if handicap < 0 {
+			diff = float64(result.B - result.A)
+			if diff < handicap {
+				probA += result.Probability
+			} else {
+				probB += result.Probability
+			}
+		} else {
+			diff = float64(result.B - result.A)
+			if diff > handicap {
+				probA += result.Probability
+			} else {
+				probB += result.Probability
+			}
+		}
+	}
+
+	return model.Probability{
+		Name:  handicapText,
+		ProbA: probA,
+		ProbB: probB,
+	}
+}
+
+// TotalProbabilities calculates the probabilities for the total markets based on the given results.
+//
+// Parameters:
+//
+//	results: []model.Result - the results of the simulated sets
+//	ou: float64 - the over/under line to calculate the probabilities for
+//
+// Returns:
+//
+//	model.Probability - the probabilities for the over/under line
+func TotalProbabilities(results []model.Result, ou float64) model.Probability {
+	var probOver, probUnder float64
+	ouText := fmt.Sprintf("%.1f", ou)
+
+	for _, result := range results {
+		total := float64(result.A + result.B)
+
+		// Check if the result satisfies the handicap condition
+		if total > ou {
+			probOver += result.Probability
+		} else {
+			probUnder += result.Probability
+		}
+	}
+
+	return model.Probability{
+		Name:  ouText,
+		ProbA: probOver,
+		ProbB: probUnder,
+	}
+}
+
+// TotalProbabilitiesRange calculates the probabilities for the total lines in the specified range.
+//
+// Parameters:
+//
+//	results: []model.Result - the results of the simulated sets
+//	start: float64 - the start of the range
+//	end: float64 - the end of the range
+//
+// Returns:
+//
+//	[]model.Probability - the probabilities for the over/under lines in the range
+func TotalProbabilitiesRange(results []model.Result, start, end float64) []model.Probability {
+	var out []model.Probability
+
+	for i := start; i <= end; i++ {
+		out = append(out, TotalProbabilities(results, i+0.5))
+	}
+
+	return out
+}
+
+// HandicapsRange calculates the probabilities for the handicap lines in the specified range.
+//
+// Parameters:
+//
+//	results: []model.Result - the results of the simulated sets
+//	start: float64 - the start of the range
+//	end: float64 - the end of the range
+//
+// Returns:
+//
+//	[]model.Probability - the probabilities for the handicap lines in the range
+func HandicapsRange(results []model.Result, start, end float64) []model.Probability {
+	var out []model.Probability
+
+	for i := start; i <= end; i++ {
+		out = append(out, HandicapProbabilities(results, i+0.5))
+	}
+
+	return out
 }

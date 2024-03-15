@@ -1,14 +1,14 @@
 package model
 
-type MatchCalculations struct {
-	Match       Match              `json:"Match"`
-	Player      []Player           `json:"Player"`
-	Simulations []SimulationResult `json:"Simulations"`
+type Player struct {
+	Name   string  `json:"Name"`
+	Serve  float64 `json:"Serve"`
+	Return float64 `json:"Return"`
 }
 
 type SimulationResult struct {
-	PlayerA       Player        `json:"PlayerA"`
-	PlayerB       Player        `json:"PlayerB"`
+	A             Player        `json:"A"`
+	B             Player        `json:"B"`
 	ProbabilityA  float64       `json:"ProbabilityA"`
 	ProbabilityB  float64       `json:"ProbabilityB"`
 	Moneyline     Probability   `json:"Moneyline"`
@@ -21,30 +21,30 @@ type SimulationResult struct {
 }
 
 type Probability struct {
-	Text  string  `json:"Text"`
+	Name  string  `json:"Name"`
 	ProbA float64 `json:"ProbA"`
 	ProbB float64 `json:"ProbB"`
 }
 
 type Result struct {
-	ResultA     int     `json:"ResultA"`
-	ResultB     int     `json:"ResultB"`
+	A           int     `json:"A"`
+	B           int     `json:"B"`
 	Probability float64 `json:"Probability"`
 }
 
 type SimResult struct {
-	scoreA   int `json:"scoreA"`
-	scoreB   int `json:"scoreB"`
-	servingA bool `json:"servingA"`
-}
-
-type SimulatedSet struct {
-	PlayerAGamesWon int `json:"PlayerAGamesWon"`
-	PlayerBGamesWon int `json:"PlayerBGamesWon"`
+	A        int  `json:"A"`
+	B        int  `json:"B"`
+	ServingA bool `json:"servingA"`
 }
 
 type SimulatedMatch struct {
-	PlayerASetsWon int `json:"PlayerASetsWon"`
-	PlayerBSetsWon int `json:"PlayerBSetsWon"`
-	SetResults     []SimulatedSet
+	ASets      int `json:"ASets"`
+	BSets      int `json:"BSets"`
+	SetResults []SimulatedSet
+}
+
+type SimulatedSet struct {
+	AGames int `json:"AGames"`
+	BGames int `json:"BGames"`
 }
