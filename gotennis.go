@@ -44,6 +44,7 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 			} else {
 				bWins++
 			}
+
 			matchGames := func(set []model.SimulatedSet) model.Result {
 				var res model.Result
 				for _, v := range set {
@@ -180,7 +181,7 @@ func SimulateTiebreak(a, b model.Player, aServing bool) bool {
 		if tbRes.ServingA {
 			gameWinnerA = SimulatePoint(a.Serve, b.Return)
 		} else {
-			gameWinnerA = SimulatePoint(b.Serve, a.Return)
+			gameWinnerA = !SimulatePoint(b.Serve, a.Return)
 		}
 
 		// Update scores based on the point winner
@@ -192,8 +193,9 @@ func SimulateTiebreak(a, b model.Player, aServing bool) bool {
 
 		// Check if the tiebreak is won
 		if (tbRes.A >= 7 || tbRes.B >= 7) && (tbRes.A-tbRes.B >= 2 || tbRes.B-tbRes.A >= 2) {
-			return tbRes.A > tbRes.B // Player A wins the tiebreak if A is greater
+			return tbRes.A > tbRes.B // Player A wins the tiebreak if A is greater, otherwise B wins
 		}
+
 		// Switch serving player after every two points, starting after the first point of the tiebreak game
 		if (tbRes.A+tbRes.B-1)%2 == 0 {
 			tbRes.ServingA = !tbRes.ServingA
@@ -331,9 +333,9 @@ func SimulateGame(s, r float64) bool {
 
 		// Check if the game is won
 		if server >= 4 && server-returner >= 2 {
-			return true // Player A wins the game
+			return true // Server wins the game
 		} else if returner >= 4 && returner-server >= 2 {
-			return false // Player B wins the game
+			return false // Returner wins the game
 		}
 	}
 }
@@ -369,11 +371,15 @@ func SimulatePoint(s, r float64) bool {
 //
 //	float64 - the scaled value
 func ScaleIntoProbabilities(a float64, b float64) (float64, float64) {
-	var outA, outB float64
-	outA = a / (a + b)
-	outB = b / (a + b)
-
-	return outA, outB
+	if a <= 0 && b <= 0 {
+		return 0, 0
+	} else if a <= 0 && b > 0 {
+		return 0, 1
+	} else if a > 0 && b <= 0 {
+		return 1, 0
+	} else {
+		return a / (a + b), b / (a + b)
+	}
 }
 
 // MatchPercentages calculates the probabilities for the moneyline based on the given results.
@@ -428,24 +434,24 @@ func HandicapProbabilities(results []model.Result, handicap float64) model.Proba
 		if handicap < 0 {
 			diff = float64(result.B - result.A)
 			if diff < handicap {
-				probA += result.Probability
+				probA += 1
 			} else {
-				probB += result.Probability
+				probB += 1
 			}
 		} else {
 			diff = float64(result.B - result.A)
 			if diff > handicap {
-				probA += result.Probability
+				probA += 1
 			} else {
-				probB += result.Probability
+				probB += 1
 			}
 		}
 	}
 
 	return model.Probability{
 		Name:  handicapText,
-		ProbA: probA,
-		ProbB: probB,
+		ProbA: probA / float64(len(results)),
+		ProbB: probB / float64(len(results)),
 	}
 }
 
@@ -454,30 +460,32 @@ func HandicapProbabilities(results []model.Result, handicap float64) model.Proba
 // Parameters:
 //
 //	results: []model.Result - the results of the simulated sets
-//	ou: float64 - the over/under line to calculate the probabilities for
+//	ou: float64 - the over/under line to calculate the probabilities for, if "Over-Under", ProbA is for over and ProbB is for under
 //
 // Returns:
 //
 //	model.Probability - the probabilities for the over/under line
 func TotalProbabilities(results []model.Result, ou float64) model.Probability {
 	var probOver, probUnder float64
-	ouText := fmt.Sprintf("%.1f", ou)
 
 	for _, result := range results {
 		total := float64(result.A + result.B)
 
 		// Check if the result satisfies the handicap condition
 		if total > ou {
-			probOver += result.Probability
+			probOver += 1
+		} else if total < ou {
+			probUnder += 1
 		} else {
-			probUnder += result.Probability
+			probOver += 0.5
+			probUnder += 0.5
 		}
 	}
 
 	return model.Probability{
-		Name:  ouText,
-		ProbA: probOver,
-		ProbB: probUnder,
+		Name:  fmt.Sprintf("%.1f", ou),
+		ProbA: probOver / float64(len(results)),
+		ProbB: probUnder / float64(len(results)),
 	}
 }
 
@@ -507,17 +515,17 @@ func TotalProbabilitiesRange(results []model.Result, start, end float64) []model
 // Parameters:
 //
 //	results: []model.Result - the results of the simulated sets
-//	start: float64 - the start of the range
-//	end: float64 - the end of the range
+//	start: int - the start of the range
+//	end: int - the end of the range
 //
 // Returns:
 //
 //	[]model.Probability - the probabilities for the handicap lines in the range
-func HandicapsRange(results []model.Result, start, end float64) []model.Probability {
+func HandicapsRange(results []model.Result, start, end int) []model.Probability {
 	var out []model.Probability
 
 	for i := start; i <= end; i++ {
-		out = append(out, HandicapProbabilities(results, i+0.5))
+		out = append(out, HandicapProbabilities(results, float64(i)+0.5))
 	}
 
 	return out
