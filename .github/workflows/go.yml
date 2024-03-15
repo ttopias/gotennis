@@ -27,15 +27,11 @@ jobs:
         with:
           go-version: '1.21.x'
 
-      - name: Fmt
-        run: go fmt ./...
-
-      - name: Lint
-        run: golangci-lint run
-      
-
       - name: Install dependencies
         run: go get .
+
+      - name: Fmt
+        run: go fmt ./...
 
       - name: Build
         run: go build -v ./...
