@@ -1,5 +1,35 @@
 # gotennis
-Tennis package written in golang
+Tennis simulation written in golang. Can be used to simulate a tennis match between 2 players.
+
+## Requirements
+
+Install [Go](https://golang.org), developed with version 1.21. Should work with older versions.
+
+## Installation
+Use got get
+```
+$ go get github.com/ttopias/gotennis
+```
+Then import the package into your own code:
+```
+import "github.com/ttopias/gotennis"
+```
+
+## Usage
+Figure out serve and return probabilities for both of the players in a match **against** the opponent. Then call:
+
+```
+result, err := gotennis.SimulateMatch(playerA, playerB, 100000, 5)
+```
+
+Result contains a simulation result after 100k simulations for a best-of 5 tennis match.
+
+## Contribute
+Use issues for everything
+
+- Report problems
+- Suggest new features
+- Improve/fix documentation
 
 ## License
 
