@@ -1,11 +1,11 @@
-package goTennis_test
+package gotennis_test
 
 import (
 	"reflect"
 	"testing"
 
-	. "github.com/ttopias/goTennis"
-	"github.com/ttopias/goTennis/model"
+	. "github.com/ttopias/gotennis"
+	"github.com/ttopias/gotennis/model"
 )
 
 func TestTotalProbabilities(t *testing.T) {

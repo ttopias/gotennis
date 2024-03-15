@@ -1,4 +1,4 @@
-# goTennis
+# gotennis
 Tennis package written in golang
 
 ## License

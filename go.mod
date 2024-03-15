@@ -1,3 +1,3 @@
-module github.com/ttopias/goTennis
+module github.com/ttopias/gotennis
 
-go 1.21.4
+go 1.21
