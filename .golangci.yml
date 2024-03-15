@@ -1,0 +1,55 @@
+run:
+  timeout: 2m
+  issues-exit-code: 1
+  tests: true
+
+output:
+  format: tab
+  print-linter-name: true
+
+linters-settings:
+  dogsled:
+    max-black-identifiers: 2
+  errcheck:
+    check-blank: false
+  gofmt:
+    simplify: true
+  govet:
+    check-shadowing: true
+    strict: true
+  revive:
+    confidence: 0.8
+
+linters:
+  disable-all: true
+  enable:
+    # defauls
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # additional
+    - asciicheck
+    - bodyclose
+    - contextcheck
+    - dogsled
+    - dupl
+    - exportloopref
+    - gochecknoglobals
+    - goconst
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosimple
+    - nakedret
+    - revive
+    - staticcheck
+    - stylecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace

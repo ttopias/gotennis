@@ -1,11 +1,11 @@
-package goTennis
+package gotennis
 
 import (
 	"fmt"
 	"log"
 	"math/rand"
 
-	"github.com/ttopias/goTennis/model"
+	"github.com/ttopias/gotennis/model"
 )
 
 // SimulateMatch simulates a tennis match between two players n times and returns the simulation results.
@@ -283,23 +283,22 @@ func SimulateSet(a, b model.Player, aStarts bool, advantage int) model.Simulated
 //
 //	bool - true if the server wins the game, false otherwise
 func BreakAdvantage(adv int, s, r float64) bool {
-	if adv == 0 {
+	switch adv {
+	case 0:
 		return SimulateGame(s, r)
-	} else if adv == 1 {
+	case 1:
 		s += 0.025
 		r -= 0.025
 		return SimulateGame(s, r)
-	} else if adv == 3 {
+	case 3:
 		s += 0.045
 		r -= 0.045
 		return SimulateGame(s, r)
-	} else if adv == 4 {
+	case 4:
 		s -= 0.045
 		r += 0.045
 		return SimulateGame(s, r)
-	} else {
-		s -= 0.025
-		r += 0.025
+	default:
 		return SimulateGame(s, r)
 	}
 }
@@ -371,13 +370,14 @@ func SimulatePoint(s, r float64) bool {
 //
 //	float64 - the scaled value
 func ScaleIntoProbabilities(a float64, b float64) (float64, float64) {
-	if a <= 0 && b <= 0 {
+	switch {
+	case a <= 0 && b <= 0:
 		return 0, 0
-	} else if a <= 0 && b > 0 {
+	case a <= 0 && b > 0:
 		return 0, 1
-	} else if a > 0 && b <= 0 {
+	case a > 0 && b <= 0:
 		return 1, 0
-	} else {
+	default:
 		return a / (a + b), b / (a + b)
 	}
 }
@@ -472,11 +472,12 @@ func TotalProbabilities(results []model.Result, ou float64) model.Probability {
 		total := float64(result.A + result.B)
 
 		// Check if the result satisfies the handicap condition
-		if total > ou {
+		switch {
+		case total > ou:
 			probOver += 1
-		} else if total < ou {
+		case total < ou:
 			probUnder += 1
-		} else {
+		default:
 			probOver += 0.5
 			probUnder += 0.5
 		}
