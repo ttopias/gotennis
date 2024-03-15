@@ -1,6 +1,7 @@
 package gotennis_test
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -149,7 +150,6 @@ func TestSimulateSet(t *testing.T) {
 		a         model.Player
 		b         model.Player
 		aStarts   bool
-		advantage int
 		expectedA int
 		expectedB int
 	}{
@@ -163,7 +163,6 @@ func TestSimulateSet(t *testing.T) {
 				Return: 0.0,
 			},
 			aStarts:   true,
-			advantage: 0,
 			expectedA: 100000,
 			expectedB: 0,
 		},
@@ -177,7 +176,6 @@ func TestSimulateSet(t *testing.T) {
 				Return: 1.0,
 			},
 			aStarts:   false,
-			advantage: 0,
 			expectedA: 0,
 			expectedB: 100000,
 		},
@@ -187,7 +185,7 @@ func TestSimulateSet(t *testing.T) {
 		// Run test case 1000 times to get more reliable results for random events
 		actual := make([]model.SimulatedSet, 0, 100000)
 		for i := 0; i < 100000; i++ {
-			actual = append(actual, SimulateSet(tc.a, tc.b, tc.aStarts, tc.advantage))
+			actual = append(actual, SimulateSet(tc.a, tc.b, tc.aStarts))
 		}
 
 		// Calculate wins
@@ -202,71 +200,122 @@ func TestSimulateSet(t *testing.T) {
 		}
 
 		if aWins != tc.expectedA || bWins != tc.expectedB {
-			t.Errorf("For a=%v, b=%v, aStarts=%t, advantage=%d, expected (%d, %d), but got (%d, %d)", tc.a, tc.b, tc.aStarts, tc.advantage, tc.expectedA, tc.expectedB, aWins, bWins)
+			t.Errorf("For a=%v, b=%v, aStarts=%t, expected (%d, %d), but got (%d, %d)", tc.a, tc.b, tc.aStarts, tc.expectedA, tc.expectedB, aWins, bWins)
 		}
 	}
 }
 
+func createJSONPlayer(s, r float64) []byte {
+	p := model.Player{
+		Serve:  s,
+		Return: r,
+	}
+	b, _ := json.Marshal(p)
+	return b
+}
+
 func TestSimulateMatch(t *testing.T) {
-	a := model.Player{
-		Serve:  1.0,
-		Return: 1.0,
+	testCases := []struct {
+		a         []byte
+		b         []byte
+		n         int
+		bo        int
+		expError  bool
+		expectedA float64
+		expectedB float64
+	}{
+		// Should be a 100/0 match
+		{
+			a:         createJSONPlayer(1.0, 1.0),
+			b:         createJSONPlayer(0.0, 0.0),
+			n:         100000,
+			bo:        3,
+			expError:  false,
+			expectedA: 1.0,
+			expectedB: 0.0,
+		},
+		// Should be a 0/100 match
+		{
+			a:         createJSONPlayer(0.0, 0.0),
+			b:         createJSONPlayer(1.0, 1.0),
+			n:         100000,
+			bo:        5,
+			expError:  false,
+			expectedA: 0.0,
+			expectedB: 1.0,
+		},
+		// Should be a ~50/50 match
+		{
+			a:         createJSONPlayer(0.65, 0.35),
+			b:         createJSONPlayer(0.65, 0.33),
+			n:         100000,
+			bo:        5,
+			expError:  false,
+			expectedA: 0.5,
+			expectedB: 0.5,
+		},
+		// Should produce an error as the bo is invalid
+		{
+			a:         createJSONPlayer(0.5, 0.5),
+			b:         createJSONPlayer(0.5, 0.5),
+			n:         100000,
+			bo:        1,
+			expError:  true,
+			expectedA: 0.0,
+			expectedB: 0.0,
+		},
+		// Should produce an error as the players are invalid
+		{
+			a:         []byte("invalid"),
+			b:         createJSONPlayer(0.5, 0.5),
+			n:         100000,
+			bo:        1,
+			expError:  true,
+			expectedA: 0.0,
+			expectedB: 0.0,
+		},
+		// Should produce an error as the players are invalid
+		{
+			a:         createJSONPlayer(0.5, 0.5),
+			b:         []byte("invalid"),
+			n:         100000,
+			bo:        1,
+			expError:  true,
+			expectedA: 0.0,
+			expectedB: 0.0,
+		},
 	}
-	b := model.Player{
-		Serve:  0.0,
-		Return: 0.0,
-	}
-	n := 1000
-	bo := 3
 
-	result := SimulateMatch(a, b, n, bo)
+	for i, tc := range testCases {
+		result, err := SimulateMatch(tc.a, tc.b, tc.n, tc.bo)
+		if (err != nil) != tc.expError {
+			t.Errorf("For test-%d - n=%d, bo=%d, expected error %t, but got %v", i, tc.n, tc.bo, tc.expError, err)
+		}
 
-	if result.A != a {
-		t.Errorf("Expected player A to be %v, but got %v", a, result.A)
-	}
-	if result.B != b {
-		t.Errorf("Expected player B to be %v, but got %v", b, result.B)
-	}
+		// Include some margin of error for the probabilities as they are calculated from random events
+		if result.Moneyline.ProbA < tc.expectedA-0.05 && result.Moneyline.ProbA > tc.expectedA+0.05 || result.Moneyline.ProbB < tc.expectedB-0.05 && result.Moneyline.ProbB > tc.expectedB+0.05 {
+			t.Errorf("For test-%d - n=%d, bo=%d, expected (%f, %f), but got (%f, %f)", i, tc.n, tc.bo, tc.expectedA, tc.expectedB, result.Moneyline.ProbA, result.Moneyline.ProbB)
+		}
 
-	// Test case 2: Best of 5
-	a = model.Player{
-		Serve:  1.0,
-		Return: 1.0,
-	}
-	b = model.Player{
-		Serve:  0.0,
-		Return: 0.0,
-	}
-	bo = 5
-	result = SimulateMatch(a, b, n, bo)
+		expected := model.SimulationResult{}
+		if tc.expError {
+			if !reflect.DeepEqual(result, expected) {
+				t.Errorf("For test-%d - n=%d, bo=%d, expected empty result, but got %v", i, tc.n, tc.bo, result)
+			}
 
-	if result.A != a {
-		t.Errorf("Expected player A to be %v, but got %v", a, result.A)
-	}
-	if result.B != b {
-		t.Errorf("Expected player B to be %v, but got %v", b, result.B)
-	}
-
-	result = SimulateMatch(a, b, n, 1)
-	expected := model.SimulationResult{}
-
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("Expected empty result, but got %v", result)
+			if err == nil {
+				t.Errorf("For test-%d - n=%d, bo=%d, expected error, but got nil", i, tc.n, tc.bo)
+			}
+		}
 	}
 }
 
 func TestSimulateSingleMatch(t *testing.T) {
-	a := model.Player{
-		Serve:  1.0,
-		Return: 1.0,
-	}
-	b := model.Player{
-		Serve:  0.0,
-		Return: 0.0,
-	}
-	n := 3
+	result, err := SimulateSingleMatch(createJSONPlayer(1.0, 1.0), createJSONPlayer(0.0, 0.0), 3, true)
 
-	result := SimulateSingleMatch(a, b, n)
+	if err != nil {
+		t.Errorf("Expected no error, but got %v", err)
+	}
 
 	if result.ASets < 2 {
 		t.Errorf("Expected player A to win at 2 sets, but got %d", result.ASets)
@@ -276,6 +325,53 @@ func TestSimulateSingleMatch(t *testing.T) {
 	}
 	if len(result.SetResults) != result.ASets+result.BSets {
 		t.Errorf("Expected %d set results, but got %d", result.ASets+result.BSets, len(result.SetResults))
+	}
+
+	// Test case 2: Player B wins the match
+	result, err = SimulateSingleMatch(createJSONPlayer(0.0, 0.0), createJSONPlayer(1.0, 1.0), 5, false)
+
+	if err != nil {
+		t.Errorf("Expected no error, but got %v", err)
+	}
+
+	if result.ASets > 0 {
+		t.Errorf("Expected player A to win 0 sets, but got %d", result.ASets)
+	}
+	if result.BSets < 3 {
+		t.Errorf("Expected player B to win at least 3 sets, but got %d", result.BSets)
+	}
+	if len(result.SetResults) != result.ASets+result.BSets {
+		t.Errorf("Expected %d set results, but got %d", result.ASets+result.BSets, len(result.SetResults))
+	}
+
+	// Test case 3: Invalid players
+	expected := model.SimulatedMatch{}
+	result, err = SimulateSingleMatch([]byte("invalid"), createJSONPlayer(1.0, 1.0), 3, true)
+	if err == nil {
+		t.Errorf("Expected error, but got nil")
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected empty result, but got %v", result)
+	}
+
+	result, err = SimulateSingleMatch(createJSONPlayer(1.0, 1.0), []byte("invalid"), 3, true)
+	if err == nil {
+		t.Errorf("Expected error, but got nil")
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected empty result, but got %v", result)
+	}
+
+	// Test case 4: Invalid best of input
+	result, err = SimulateSingleMatch(createJSONPlayer(1.0, 1.0), createJSONPlayer(0.0, 0.0), 1, true)
+	if err == nil {
+		t.Errorf("Expected error, but got nil")
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("Expected empty result, but got %v", result)
 	}
 }
 

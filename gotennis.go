@@ -1,6 +1,7 @@
 package gotennis
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -12,18 +13,32 @@ import (
 //
 // Parameters:
 //
-//	a: model.Player - the first player
-//	b: model.Player - the second player
+//	playerA: []byte - the first player as a JSON byte array, see model.Player for the structure
+//	playerB: []byte - the second player as a JSON byte array, see model.Player for the structure
 //	n: int - the number of simulations
 //	bo: int - the number of sets in the match (3 for best of 3, 5 for best of 5)
 //
 // Returns:
 //
 //	model.SimulationResult - the simulation results
-func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
+func SimulateMatch(playerA, playerB []byte, n int, bo int) (model.SimulationResult, error) {
+	// Unmarshal JSON to model.Player
+	var a, b model.Player
+
+	err := json.Unmarshal(playerA, &a)
+	if err != nil {
+		log.Println("Failed to unmarshal player A:", err)
+		return model.SimulationResult{}, err
+	}
+
+	err = json.Unmarshal(playerB, &b)
+	if err != nil {
+		log.Println("Failed to unmarshal player B:", err)
+		return model.SimulationResult{}, err
+	}
+
 	if bo != 3 && bo != 5 {
-		log.Println("Invalid number of sets")
-		return model.SimulationResult{}
+		return model.SimulationResult{}, fmt.Errorf("invalid number of sets")
 	}
 
 	var aWins, bWins int
@@ -36,59 +51,40 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 	// Simulate the match n times
 	for i := 0; i < n; i++ {
 		// Simulate a single match
-		if i%2 == 0 {
-			matchResult = SimulateSingleMatch(a, b, bo)
-
-			if matchResult.ASets > matchResult.BSets {
-				aWins++
-			} else {
-				bWins++
-			}
-
-			matchGames := func(set []model.SimulatedSet) model.Result {
-				var res model.Result
-				for _, v := range set {
-					res.A += v.AGames
-					res.B += v.BGames
-				}
-				return res
-			}(matchResult.SetResults)
-
-			allGames = append(allGames, matchGames)
-			endResult := model.Result{
-				A: matchResult.ASets,
-				B: matchResult.BSets,
-			}
-			allSets = append(allSets, endResult)
-		} else {
-			matchResult = SimulateSingleMatch(a, b, bo)
-			if matchResult.ASets > matchResult.BSets {
-				bWins++
-			} else {
-				aWins++
-			}
-			matchGames := func(set []model.SimulatedSet) model.Result {
-				var res model.Result
-				for _, v := range set {
-					res.A += v.BGames
-					res.B += v.AGames
-				}
-				return res
-			}(matchResult.SetResults)
-			allGames = append(allGames, matchGames)
-			endResult := model.Result{
-				A: matchResult.ASets,
-				B: matchResult.BSets,
-			}
-			allSets = append(allSets, endResult)
+		// Player A serves first in odd simulations
+		matchResult, err = SimulateSingleMatch(playerA, playerB, bo, i%2 == 0)
+		if err != nil {
+			return model.SimulationResult{}, err
 		}
+
+		if matchResult.ASets > matchResult.BSets {
+			aWins++
+		} else {
+			bWins++
+		}
+
+		matchGames := func(set []model.SimulatedSet) model.Result {
+			var res model.Result
+			for _, v := range set {
+				res.A += v.AGames
+				res.B += v.BGames
+			}
+			return res
+		}(matchResult.SetResults)
+
+		allGames = append(allGames, matchGames)
+		endResult := model.Result{
+			A: matchResult.ASets,
+			B: matchResult.BSets,
+		}
+		allSets = append(allSets, endResult)
 	}
 
 	// Calculate average probabilities
 	averageProbabilityA := float64(aWins) / float64(n)
 	averageProbabilityB := float64(bWins) / float64(n)
-	gamesResults = MatchPercentages(allGames)
-	setsResults = MatchPercentages(allSets)
+	gamesResults = WinPercentages(allGames)
+	setsResults = WinPercentages(allSets)
 	if bo == 3 {
 		setHandies = HandicapsRange(setsResults, -2, 1)
 		gameHandies = HandicapsRange(gamesResults, -10, 10)
@@ -112,46 +108,58 @@ func SimulateMatch(a, b model.Player, n int, bo int) model.SimulationResult {
 		GameHandicaps: gameHandies,
 		SetOU:         setOUs,
 		GameOU:        gameOUs,
-		ProbabilityA:  averageProbabilityA,
-		ProbabilityB:  averageProbabilityB,
 		Sets:          setsResults,
 		Games:         gamesResults,
-	}
+	}, nil
 }
 
 // SimulateSingleMatch simulates a single tennis match between two players.
 //
 // Parameters:
 //
-//	a: model.Player - the first player
-//	b: model.Player - the second player
+//	playerA: []byte - the first player as a JSON byte array, see model.Player for the structure
+//	playerB: []byte - the second player as a JSON byte array, see model.Player for the structure
 //	n: int - the number of sets in the match (1 for best of 1, 3 for best of 3, 5 for best of 5)
 //
 // Returns:
 //
 //	model.SimulatedMatch - the simulation results
-func SimulateSingleMatch(a, b model.Player, n int) model.SimulatedMatch {
+func SimulateSingleMatch(playerA, playerB []byte, n int, aServe bool) (model.SimulatedMatch, error) {
+	aServing := aServe
 	var matchResult model.SimulatedMatch
-	var aServing bool
-	var lastWinner int
+	// Unmarshal JSON to model.Player
+	var a, b model.Player
+
+	if n != 3 && n != 5 {
+		return matchResult, fmt.Errorf("invalid number of sets")
+	}
+
+	err := json.Unmarshal(playerA, &a)
+	if err != nil {
+		return matchResult, err
+	}
+
+	err = json.Unmarshal(playerB, &b)
+	if err != nil {
+		return matchResult, err
+	}
 
 	// Simulate sets until one player wins enough sets to win the match
 	for matchResult.ASets < (n+1)/2 && matchResult.BSets < (n+1)/2 {
 		// Simulate a set
-		setResult := SimulateSet(a, b, aServing, lastWinner)
+		setResult := SimulateSet(a, b, aServing)
 
 		// Update match scores based on the set winner
 		if setResult.AGames > setResult.BGames {
 			matchResult.ASets++
-			lastWinner = 3
 		} else {
 			matchResult.BSets++
-			lastWinner = 4
 		}
 		matchResult.SetResults = append(matchResult.SetResults, setResult)
 		aServing = !aServing
 	}
-	return matchResult
+
+	return matchResult, nil
 }
 
 // SimulateTiebreak simulates a tennis tiebreak game between two players.
@@ -179,9 +187,9 @@ func SimulateTiebreak(a, b model.Player, aServing bool) bool {
 	for {
 		// Simulate a point
 		if tbRes.ServingA {
-			gameWinnerA = SimulatePoint(a.Serve, b.Return)
+			gameWinnerA = SimulatePoint(a.Serve)
 		} else {
-			gameWinnerA = !SimulatePoint(b.Serve, a.Return)
+			gameWinnerA = !SimulatePoint(b.Serve)
 		}
 
 		// Update scores based on the point winner
@@ -210,47 +218,40 @@ func SimulateTiebreak(a, b model.Player, aServing bool) bool {
 //	a: model.Player - the first player
 //	b: model.Player - the second player
 //	aStarts: bool - If true, player A starts serving. If false, player B starts serving.
-//	advantage: int - the advantage to be used
 //
 // Returns:
 //
 //	model.SimulatedSet - the simulation results
-func SimulateSet(a, b model.Player, aStarts bool, advantage int) model.SimulatedSet {
+func SimulateSet(a, b model.Player, aStarts bool) model.SimulatedSet {
 	// Counters for the players' games
-	var res model.SimulatedSet
-	var serverWins bool
 	var playerAServing bool
-	inAdvantage := advantage
-
-	// Initialize values for res
-	res.AGames = 0
-	res.BGames = 0
+	var serverWins bool
 	playerAServing = aStarts
+	res := model.SimulatedSet{
+		AGames: 0,
+		BGames: 0,
+	}
 
 	for {
 		// Simulate a game
 		if playerAServing {
-			serverWins = BreakAdvantage(inAdvantage, a.Serve, b.Return)
+			serverWins = SimulateGame(a.Serve, b.Return)
 		} else {
-			serverWins = BreakAdvantage(inAdvantage, b.Serve, a.Return)
+			serverWins = SimulateGame(b.Serve, a.Return)
 		}
 
 		// Update scores based on the game winner
 		if playerAServing {
 			if serverWins {
 				res.AGames++
-				inAdvantage = 0
 			} else {
 				res.BGames++
-				inAdvantage = 2
 			}
 		} else {
 			if serverWins {
 				res.BGames++
-				inAdvantage = 0
 			} else {
 				res.AGames++
-				inAdvantage = 1
 			}
 		}
 
@@ -267,39 +268,8 @@ func SimulateSet(a, b model.Player, aStarts bool, advantage int) model.Simulated
 			}
 			return res
 		}
+		// Switch serving player after every game like in a real tennis match
 		playerAServing = !playerAServing
-	}
-}
-
-// BreakAdvantage simulates a tennis game with a specific advantage for the server or the returner, depending on the past events in the set.
-//
-// Parameters:
-//
-//	adv: int - the advantage to be used
-//	s: float64 - the server's probability of winning a single point when serving
-//	r: float64 - the returner's probability of winning a single point when returning
-//
-// Returns:
-//
-//	bool - true if the server wins the game, false otherwise
-func BreakAdvantage(adv int, s, r float64) bool {
-	switch adv {
-	case 0:
-		return SimulateGame(s, r)
-	case 1:
-		s += 0.025
-		r -= 0.025
-		return SimulateGame(s, r)
-	case 3:
-		s += 0.045
-		r -= 0.045
-		return SimulateGame(s, r)
-	case 4:
-		s -= 0.045
-		r += 0.045
-		return SimulateGame(s, r)
-	default:
-		return SimulateGame(s, r)
 	}
 }
 
@@ -321,7 +291,7 @@ func SimulateGame(s, r float64) bool {
 	// Simulate points until the game is won
 	for {
 		// Simulate a point
-		pointWinnerA := SimulatePoint(s, r)
+		pointWinnerA := SimulatePoint(s)
 
 		// Update scores based on the point winner
 		if pointWinnerA {
@@ -349,14 +319,8 @@ func SimulateGame(s, r float64) bool {
 // Returns:
 //
 //	bool - true if player A wins the point, false otherwise
-func SimulatePoint(s, r float64) bool {
-	// Scale probabilities to ensure their sum is within the valid range (0 to 1).
-	s, _ = ScaleIntoProbabilities(s, r)
-
-	// Generate a random number between 0 and 1 to determine the outcome of the point.
-	randomNumber := rand.Float64()
-
-	return randomNumber < s
+func SimulatePoint(s float64) bool {
+	return rand.Float64() < s
 }
 
 // ScaleIntoProbabilities ensures the inputs is within the valid range (0 to 1) to be used as a probabilities
@@ -382,7 +346,7 @@ func ScaleIntoProbabilities(a float64, b float64) (float64, float64) {
 	}
 }
 
-// MatchPercentages calculates the probabilities for the moneyline based on the given results.
+// WinPercentages calculates the probabilities for the moneyline based on the given results.
 //
 // Parameters:
 //
@@ -391,7 +355,7 @@ func ScaleIntoProbabilities(a float64, b float64) (float64, float64) {
 // Returns:
 //
 //	[]model.Result - the probabilities for the match
-func MatchPercentages(simulatedSets []model.Result) []model.Result {
+func WinPercentages(simulatedSets []model.Result) []model.Result {
 	resultCounts := make(map[model.Result]int)
 	var resultPercentage []model.Result
 
@@ -405,10 +369,8 @@ func MatchPercentages(simulatedSets []model.Result) []model.Result {
 	}
 
 	// Calculate percentage for each result
-	var totalSets = len(simulatedSets)
 	for result, count := range resultCounts {
-		percentage := float64(count) / float64(totalSets)
-		result.Probability = percentage
+		result.Probability = float64(count) / float64(len(simulatedSets))
 		resultPercentage = append(resultPercentage, result)
 	}
 
