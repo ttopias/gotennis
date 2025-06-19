@@ -1,4 +1,4 @@
-BINARY_NAME = goTennis
+BINARY_NAME = gotennis
 
 all: clean deps lint test build
 
@@ -22,15 +22,14 @@ test:
 build:
 	@echo "Building..."
 	go build -o $(BINARY_NAME) -v
-	./$(BINARY_NAME)
 
 install:
 	@echo "Installing..."
 	go install
 
 run:
-	@echo "Running..."
-	go build -o $(BINARY_NAME) -v ./...
+	make build
+	@echo "Running the application..."
 	./$(BINARY_NAME)
 
 .PHONY: all clean deps lint test build install run
